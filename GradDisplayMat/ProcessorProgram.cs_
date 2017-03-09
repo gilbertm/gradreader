@@ -13,7 +13,21 @@ using GradDisplayMat.Models;
 
 namespace GradDisplayMat
 {
-  
+    public interface IProcessor
+    {
+        void Run();
+    }
+
+    public interface IWorker
+    {
+        void DoWork();
+    }
+
+    public interface ILogger
+    {
+        void Log(string logDetails, int level);
+    }
+
     class Program
     {
         
@@ -22,7 +36,20 @@ namespace GradDisplayMat
 
         static void Main(string[] args)
         {
-            
+
+            // Global exception handler.
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+
+            Console.WriteLine(DateTime.Now.ToString("yyyy-mm-dd H:mm:ss") + "... ... PROGRAM START");
+
+            int intervalTimeInMilliseconds = 3000;
+            var processor = new Processor(new Worker(new Logger()), new Logger(), intervalTimeInMilliseconds);
+            processor.Run();
+
+
+
+            // ------------------------------------------------------------------------------------------------------------- //
+
             // Defines the sources of configuration information for the 
             // application.
             var builder = new ConfigurationBuilder()
@@ -249,7 +276,15 @@ namespace GradDisplayMat
 
             }
         }
-        
+
+
+        static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            new Logger().Log("-Global unhandled exception:" + e.ExceptionObject.ToString(), 0);
+            // Log exception / send notification.
+        }
+
+
         static void CleanTeleprompt(TelepromptDbContext context)
         {
             // clean teleprompt
@@ -288,6 +323,28 @@ namespace GradDisplayMat
 
                 var graduate = g.Graduate.FirstOrDefault(m => m.GraduateId == itemTopQueue.GraduateId);
 
+                // save to the disk
+                /* try
+                {
+                    var mainFilename = _hostEnvironment.WebRootPath + "\\" + "resources" + "\\" + "log" + "\\" + "log.txt";
+                    using (var fs = new System.IO.FileStream(mainFilename, System.IO.FileMode.Append))
+                    {
+                        using (var stream = new System.IO.StreamWriter(fs))
+                        {
+                            stream.WriteLine(respectedTime + " Id:" + graduate.GraduateId + " Name:" + graduate.FirstName + " " + graduate.LastName);
+
+                            stream.Flush();
+                        }
+
+
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.Write(e.Message);
+                    // ignore any io error
+                } */
+
                 if (graduate != null)
                 {
                     graduate.Status = 1;
@@ -297,6 +354,103 @@ namespace GradDisplayMat
                 }
                 
 
+            }
+        }
+
+        public void StandardSQLQueries()
+        {
+
+            // Defines the sources of configuration information for the 
+            // application.
+            var builder = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json");
+
+            // Create the configuration object that the application will
+            // use to retrieve configuration information.
+            var configuration = builder.Build();
+
+            // Retrieve the configuration information.
+            var configValue = configuration.GetConnectionString("MainDisplayDB");
+
+
+            var conn = new SqlConnection(configValue);
+
+
+            if (conn != null && conn.State == ConnectionState.Closed)
+            {
+                conn.Open();
+
+                if (conn.State == ConnectionState.Open)
+                {
+                    /* using (SqlCommand command = new SqlCommand("SELECT * FROM Queue WHERE GraduateId = @0", conn))
+                    {
+                        command.Parameters.Add(new SqlParameter("0", "112200165"));
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            Console.WriteLine("GraduateId \t | Created");
+                            while (reader.Read())
+                            {
+                                Console.WriteLine(String.Format("{0} \t | {1}",
+                                reader[0], reader[1]));
+                            }
+                        }
+                    } */
+
+                    /* Console.WriteLine("INSERT INTO command");
+                   SqlCommand insertCommand = new SqlCommand("INSERT INTO TableName (FirstColumn, SecondColumn, ThirdColumn, ForthColumn) VALUES (@0, @1, @2, @3)", conn);
+                   insertCommand.Parameters.Add(new SqlParameter("0", 10));
+                   insertCommand.Parameters.Add(new SqlParameter("1", "Test Column"));
+                   insertCommand.Parameters.Add(new SqlParameter("2", DateTime.Now));
+                   insertCommand.Parameters.Add(new SqlParameter("3", false));
+
+                   Console.WriteLine("Commands executed! Total rows affected are " + insertCommand.ExecuteNonQuery());
+                   Console.WriteLine("Done! Press enter to move to the next step");
+                   Console.ReadLine();
+                   Console.Clear();
+                   Console.WriteLine("Now the error trial!");
+
+                   try
+                   {
+                       SqlCommand errorCommand = new SqlCommand("SELECT * FROM someErrorColumn", conn);
+                       errorCommand.ExecuteNonQuery();
+                   }
+                   catch (SqlException er)
+                   {
+                       Console.WriteLine("There was an error reported by SQL Server, " + er.Message);
+                   } */
+                }
+            }
+
+
+            conn.Open();
+
+
+            if (conn != null && conn.State == ConnectionState.Open)
+            {
+
+
+                using (SqlCommand command = new SqlCommand("SELECT GraduateId, FullName FROM Graduate WHERE GraduateId = @0", conn))
+                {
+                    // tag read here
+                    // clean it up
+                    // remove unnecessary characters
+                    // like dashes and spaces
+                    var tag = "0000000000---- 000001  ---- 01200  046";
+                    // Console.WriteLine("GraduateId: " + Regex.Replace(tag, "[^0-9a-zA-Z]+", ""));
+                    command.Parameters.Add(new SqlParameter("0", Regex.Replace(tag, "[^0-9a-zA-Z]+", "")));
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            Console.WriteLine(String.Format("\t\tGraduateId: {0} \t Fullname: {1}", reader[0], reader[1]));
+                        }
+                    }
+                }
+
+
+                Console.WriteLine("Press any key to proceed with tag reading.");
+                Console.ReadLine();
             }
         }
     }

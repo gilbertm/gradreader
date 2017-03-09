@@ -1,0 +1,123 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace GradDisplayMat
+{
+    /// <summary>
+    /// Main processor class. Will run a worker every x seconds and enable quitting via the console command of "exit"
+    /// </summary>
+    public class Processor : IProcessor
+    {
+        IWorker _worker;
+        ILogger _logger;
+        int _intervalInMilliseconds = 1000;
+        System.Timers.Timer _timer;
+        bool _running;
+
+        public Processor(IWorker worker, ILogger logger, int intervalInMilliseconds)
+        {
+            _worker = worker;
+            _logger = logger;
+            _intervalInMilliseconds = intervalInMilliseconds;
+        }
+
+        public void Run()
+        {
+            _timer = new System.Timers.Timer();
+            _timer.Elapsed += aTimer_Elapsed;
+            _timer.Interval = _intervalInMilliseconds;
+            _timer.Enabled = true;
+            _timer.Start();
+
+            // Use this if needing to run something at the same time as the timer. E.g a key enter for cancellation.
+            _running = true;
+            while (_running)
+            {
+                if (Console.ReadLine().ToLower() == "exit" || Console.ReadLine().ToLower() == "abort")
+                {
+                    Environment.Exit(0);
+                }
+            }
+        }
+
+
+        void aTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            // Need to stop the timer, otherwise it will continue at it's set interval wether this process has finished or not.
+            // Remove the stop if you want the event to fire every x seconds as opposed to x seconds after finish.
+            _timer.Stop();
+
+            //Main method to run
+            RunProcess_WithExceptionHandling();
+
+            // Start the timer back up
+            _timer.Start();
+        }
+
+
+        public void RunProcess_WithExceptionHandling()
+        {
+            try
+            {
+                _logger.Log("... ... Start Process", 3);
+
+                _worker.DoWork();
+
+                _logger.Log("... ... End Process", 3);
+            }
+            catch (Exception ex)
+            {
+                // Log exception and/or send notification.
+                _logger.Log(ex.ToString(), 0);
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// This is the class where you do what you want to do at the specified interval
+    /// </summary>
+    public class Worker : IWorker
+    {
+        ILogger _logger;
+
+        public Worker(ILogger logger)
+        {
+            _logger = logger;
+        }
+
+
+        /// <summary>        
+        /// *** THIS IS WHERE WE DO THE WORK AT THE SET INTERVAL. IWorker.DoWork is the only method we would need to change. ***
+        /// No need for standard exception handling here. Can throw up to the RunProcessHandler.
+        /// </summary>
+        public void DoWork()
+        {
+            var bob = "";
+            bob = bob + bob;
+
+            for (int i = 0; i < 4; i++)
+            {
+                System.Threading.Thread.Sleep(1000);
+                _logger.Log("I'm Working...Sleep " + i, 3);
+            }
+        }
+    }
+
+
+    public class Logger : ILogger
+    {
+        public void Log(string logDetails, int level)
+        {
+            if (level == 0)
+                Console.WriteLine(DateTime.Now.ToString("yyyy-mm-dd H:mm:ss") + ":EXCEPTION -" + logDetails);
+            else
+                Console.WriteLine(DateTime.Now.ToString("yyyy-mm-dd H:mm:ss") + ": " + logDetails);
+        }
+    }
+
+}
+

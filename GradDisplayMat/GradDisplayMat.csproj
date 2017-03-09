@@ -241,6 +241,8 @@
     <Compile Include="Models\Graduate.cs" />
     <Compile Include="Models\Queue.cs" />
     <Compile Include="Models\Teleprompt.cs" />
+    <None Include="Processor.cs_" />
+    <None Include="ProcessorProgram.cs_" />
     <Compile Include="Program.cs" />
     <Compile Include="SolutionConstants.cs" />
   </ItemGroup>
