@@ -18,7 +18,7 @@ namespace GradDisplayMat
     {
         
         static ImpinjReader reader = new ImpinjReader();
-        static SqlConnection conn = null;
+        static string configValue = String.Empty;
 
         static void Main(string[] args)
         {
@@ -34,167 +34,11 @@ namespace GradDisplayMat
             var configuration = builder.Build();
 
             // Retrieve the configuration information.
-            var configValue = configuration.GetConnectionString("MainDisplayDB");
-
-
-            TelepromptDbContext.ConnectionString = configValue;
-            var _contextTeleprompt = new TelepromptDbContext();
-
-            GraduateDbContext.ConnectionString = configValue;
-            var _contextGraduate = new GraduateDbContext();
-
-            QueueDbContext.ConnectionString = configValue;
-            var _contextQueue = new QueueDbContext();
-
+            configValue = configuration.GetConnectionString("MainDisplayDB");
 
             Console.WriteLine("a. The read tag will automatically be served to the Teleprompt Screen, if the screen is empty");
             Console.WriteLine("b. If the screen is not empty, await the read tag to queue until available");
             Console.WriteLine("c. If the screen is empty and there's queue waiting. Pop the queue and load to Teleprompt screen");
-            Console.Write("\n\n\nReadding Tag >>>> : ");
-
-            var searchGraduateId = Console.ReadLine();
-
-            searchGraduateId = Regex.Replace(searchGraduateId.ToString(), "[^0-9a-zA-Z]+", "");
-
-            if (searchGraduateId != String.Empty)
-            {
-
-                Graduate graduate = _contextGraduate.Graduate.SingleOrDefault(m => m.GraduateId == searchGraduateId);
-
-                // MUST be on the graduate list
-                if (graduate != null)
-                {
-                    // Status 1
-                    // Finished with Display
-                    if (graduate.Status != 1)
-                    {
-                        IEnumerable<Teleprompt> teleprompt = _contextTeleprompt.Teleprompt;
-                        var isSearchGraduateInTeleprompt = teleprompt.SingleOrDefault(m => m.GraduateId == searchGraduateId);
-                        var countTeleprompt = teleprompt.Count();
-
-                        // check and kick teleprompt screen, if there's a new reading
-                        // so that after logics will always
-                        // fulfill
-
-                        // isSearchGraduateInTeleprompt is for the NEW Graduate Read
-                        // NOTE: He's is not in the Teleprompt, someone is occupying it.
-                        //       we need to kick the tenant, if he's already past his occupancy Status = 1
-                        if (isSearchGraduateInTeleprompt == null && countTeleprompt > 0)
-                        {
-                            Teleprompt currentTenantOnTeleprompt = teleprompt.SingleOrDefault();
-
-                            if (currentTenantOnTeleprompt.Status == 1)
-                            {
-                                CleanTeleprompt(_contextTeleprompt);
-
-                                countTeleprompt = 0;
-                            }
-
-                        }
-
-
-                        // NOT in teleprompt
-                        // AND
-                        // EMPTY teleprompt
-                        if (isSearchGraduateInTeleprompt == null && countTeleprompt <= 0)
-                        {
-                            Console.WriteLine("\t\t\tTeleprompt Status: In: No, Count: {0}", countTeleprompt);
-
-                            IEnumerable<Queue> queue = _contextQueue.Queue;
-                            var isSearchGraduateInQueue = queue.SingleOrDefault(m => m.GraduateId == searchGraduateId);
-                            var totalInQueue = queue.Count();
-
-                            // teleprompt == empty
-                            // searchGraduate not in queue
-                            // queue == empty
-                            if (isSearchGraduateInQueue == null && totalInQueue <= 0)
-                            {
-                                // clean teleprompt
-                                CleanTeleprompt(_contextTeleprompt);
-
-                                // push directly to the teleprompt
-                                DisplayTeleprompt(_contextTeleprompt, searchGraduateId);
-
-                                // update graduate status
-                                var grad = _contextGraduate.Graduate.FirstOrDefault(m => m.GraduateId == searchGraduateId);
-                                if (grad != null)
-                                {
-                                    grad.Status = 1;
-
-                                    _contextGraduate.Graduate.Update(grad);
-                                    _contextGraduate.SaveChanges();
-                                }
-                                
-                            }
-                            else
-                            {
-                                // queue is not empty
-                                // push in the end
-                                if (totalInQueue > 0)
-                                {
-                                    _contextQueue.Queue.Add(new Queue() { GraduateId = searchGraduateId, Created = System.DateTime.Now });
-                                    _contextQueue.SaveChanges();
-                                }
-
-                                CleanTeleprompt(_contextTeleprompt);
-
-                                PopQueueAddTelepromptUpdateGraduate(_contextQueue, _contextTeleprompt, _contextGraduate);
-
-                                Console.WriteLine("\t\t\tTeleprompt Status: In: No, Count: {0}", countTeleprompt);
-                            }
-
-                        }
-                        else
-                        {
-                            // Teleprompt is not empty
-                            // And 
-                            // Is not the current display on screen
-                            if (isSearchGraduateInTeleprompt == null && countTeleprompt > 0)
-                            {
-                                // queue
-                                IEnumerable<Queue> queue = _contextQueue.Queue;
-                                var isSearchGraduateInQueue = queue.SingleOrDefault(m => m.GraduateId == searchGraduateId);
-                                if (isSearchGraduateInQueue == null)
-                                {
-                                    _contextQueue.Queue.Add(new Queue() { GraduateId = searchGraduateId, Created = System.DateTime.Now });
-                                    _contextQueue.SaveChanges();
-
-                                    Console.WriteLine("\t\t\tQueue Status >> In: No, Count: {0}", queue.Count());
-                                }
-                                else
-                                {
-                                    Console.WriteLine("\t\t\tQueue Status >> In: Yes, Count: {0}", queue.Count());
-                                }
-                            }
-                        }
-                    } else
-                    {
-                        Console.WriteLine("\nGraduate Screen Time... Already finished!!!");
-                        Console.WriteLine("Do you want to show this graduate again? Please change Graduate Status to 0\n");
-                        
-                    }
-
-                }
-                else
-                {
-                    // Not a Graduate Id string tag
-                    Console.WriteLine("Can't find that Id @0", searchGraduateId);
-                }
-
-
-
-            }
-            else
-            {
-                Console.WriteLine("Invalid string: @0", searchGraduateId);
-            }
-
-
-            Console.Write("Press any key to exit.");
-            Console.ReadLine();
-
-            return;
-
             
             try
             {
@@ -206,11 +50,11 @@ namespace GradDisplayMat
 
                 reader.Start();
 
-                Console.WriteLine("Enter word. 'Yallah!' to equit.");
+                Console.WriteLine("\n\nEnter word. 'Yallah!' to quit.\n\n\n");
 
                 string quitline = Console.ReadLine();
 
-                if (quitline == "Yallah!")
+                if (quitline.ToLower() == "yallah!")
                 {
                     Console.WriteLine("\n\nExiting!!!");
 
@@ -245,7 +89,161 @@ namespace GradDisplayMat
             // and print the data.
             foreach (Tag tag in report)
             {
-                Console.WriteLine("EPC / GraduateId : {0} ", Regex.Replace(tag.Epc.ToString(), "[^0-9a-zA-Z]+", ""));
+                TelepromptDbContext.ConnectionString = configValue;
+                TelepromptDbContext _contextTeleprompt = new TelepromptDbContext();
+
+                GraduateDbContext.ConnectionString = configValue;
+                GraduateDbContext _contextGraduate = new GraduateDbContext();
+
+                QueueDbContext.ConnectionString = configValue;
+                QueueDbContext _contextQueue = new QueueDbContext();
+
+                var searchGraduateId = Regex.Replace(tag.Epc.ToString(), "[^0-9a-zA-Z]+", "");
+                
+                Console.WriteLine("EPC / GraduateId >>>> {0} ", searchGraduateId);
+
+                if (searchGraduateId != String.Empty)
+                {
+
+                    Graduate graduate = _contextGraduate.Graduate.SingleOrDefault(m => m.GraduateId == searchGraduateId);
+
+                    // MUST be on the graduate list
+                    if (graduate != null)
+                    {
+                        // Status 1
+                        // Finished with Display
+                        if (graduate.Status != 1)
+                        {
+                            IEnumerable<Teleprompt> teleprompt = _contextTeleprompt.Teleprompt;
+                            var isSearchGraduateInTeleprompt = teleprompt.SingleOrDefault(m => m.GraduateId == searchGraduateId);
+                            var countTeleprompt = teleprompt.Count();
+
+                            // check and kick teleprompt screen, if there's a new reading
+                            // so that after logics will always
+                            // fulfill
+
+                            // isSearchGraduateInTeleprompt is for the NEW Graduate Read
+                            // NOTE: He's is not in the Teleprompt, someone is occupying it.
+                            //       we need to kick the tenant, if he's already past his occupancy Status = 1
+                            if (isSearchGraduateInTeleprompt == null && countTeleprompt > 0)
+                            {
+                                Teleprompt currentTenantOnTeleprompt = teleprompt.SingleOrDefault();
+
+                                if (currentTenantOnTeleprompt.Status == 1)
+                                {
+                                    CleanTeleprompt(_contextTeleprompt);
+
+                                    countTeleprompt = 0;
+                                }
+
+                            }
+
+                            if (isSearchGraduateInTeleprompt != null && countTeleprompt > 0)
+                            {
+                                Console.WriteLine("\t\t\t\t\t <<<<<<<<<<<<<<< Active >>>>>>>>>>>>>>> ");
+                            }
+
+
+                            // NOT in teleprompt
+                            // AND
+                            // EMPTY teleprompt
+                            if (isSearchGraduateInTeleprompt == null && countTeleprompt <= 0)
+                            {
+                                Console.WriteLine("\t\t\tTeleprompt Status: In: No, Count: {0}", countTeleprompt);
+
+                                IEnumerable<Queue> queue = _contextQueue.Queue;
+                                var isSearchGraduateInQueue = queue.SingleOrDefault(m => m.GraduateId == searchGraduateId);
+                                var totalInQueue = queue.Count();
+
+                                // teleprompt == empty
+                                // searchGraduate not in queue
+                                // queue == empty
+                                if (isSearchGraduateInQueue == null && totalInQueue <= 0)
+                                {
+                                    // clean teleprompt
+                                    CleanTeleprompt(_contextTeleprompt);
+
+                                    // push directly to the teleprompt
+                                    DisplayTeleprompt(_contextTeleprompt, searchGraduateId);
+
+                                    // update graduate status
+                                    var grad = _contextGraduate.Graduate.FirstOrDefault(m => m.GraduateId == searchGraduateId);
+                                    if (grad != null)
+                                    {
+                                        grad.Status = 1;
+
+                                        _contextGraduate.Update(grad);
+                                        _contextGraduate.SaveChanges();
+                                    }
+
+                                }
+                                else
+                                {
+                                    // queue is not empty and not in the queue
+                                    // push in the end
+                                    if (isSearchGraduateInQueue == null && totalInQueue > 0)
+                                    {
+                                        _contextQueue.Queue.Add(new Queue() { GraduateId = searchGraduateId, Created = System.DateTime.Now });
+                                        _contextQueue.SaveChanges();
+
+                                        Console.WriteLine("\t\t\t------------------------------------- In Queue");
+                                    }
+
+                                    CleanTeleprompt(_contextTeleprompt);
+
+                                    PopQueueAddTelepromptUpdateGraduate(_contextQueue, _contextTeleprompt, _contextGraduate);
+
+                                    Console.WriteLine("\t\t\tTeleprompt Status: In: No, Count: {0}", countTeleprompt);
+                                    Console.WriteLine("\t\t\tQueue Status: In: Yes, Count: {0}", totalInQueue);
+
+                                }
+
+                            }
+                            else
+                            {
+                                // Teleprompt is not empty
+                                // And 
+                                // Is not the current display on screen
+                                if (isSearchGraduateInTeleprompt == null && countTeleprompt > 0)
+                                {
+                                    // queue
+                                    IEnumerable<Queue> queue = _contextQueue.Queue;
+                                    var isSearchGraduateInQueue = queue.SingleOrDefault(m => m.GraduateId == searchGraduateId);
+                                    if (isSearchGraduateInQueue == null)
+                                    {
+                                        _contextQueue.Queue.Add(new Queue() { GraduateId = searchGraduateId, Created = System.DateTime.Now });
+                                        _contextQueue.SaveChanges();
+
+                                        Console.WriteLine("\t\t\tQueue Status >> In: No, Count: {0}", queue.Count());
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("\t\t\tQueue Status >> In: Yes, Count: {0}", queue.Count());
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("\nGraduate Screen Time... Either FINISHED and/or ACTIVE !!!");
+                            Console.WriteLine("Do you want to show this graduate again? Please change Graduate Status to 0\n");
+
+                        }
+
+                    }
+                    else
+                    {
+                        // Not a Graduate Id string tag
+                        Console.WriteLine("Can't find that Id {0}", searchGraduateId);
+                    }
+
+
+
+                }
+                else
+                {
+                    Console.WriteLine("Invalid string: @0", searchGraduateId);
+                }
 
             }
         }
@@ -264,7 +262,7 @@ namespace GradDisplayMat
         static void DisplayTeleprompt(TelepromptDbContext t, string searchGraduateId)
         {
             var teleprompt = new Teleprompt() { GraduateId = searchGraduateId, Created = DateTime.Now };
-            t.Teleprompt.Add(teleprompt);
+            t.Add(teleprompt);
             t.SaveChanges();
         }
 
@@ -283,7 +281,7 @@ namespace GradDisplayMat
                 var respectedTime = DateTime.Now.ToString();
 
                 var teleprompt = new Teleprompt() { GraduateId = itemTopQueue.GraduateId, Created = itemTopQueue.Created };
-                t.Teleprompt.Add(teleprompt);
+                t.Add(teleprompt);
                 t.SaveChanges();
 
                 var graduate = g.Graduate.FirstOrDefault(m => m.GraduateId == itemTopQueue.GraduateId);
@@ -295,7 +293,6 @@ namespace GradDisplayMat
                     g.Update(graduate);
                     g.SaveChanges();
                 }
-                
 
             }
         }
